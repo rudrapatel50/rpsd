@@ -52,19 +52,19 @@ int setup_server_socket(int port) {
     return sockfd;
 }
 
-char* find_winner(char *move1, char *move2) {
+char find_winner(char *move1, char *move2) {
     if (strcmp(move1, move2) == 0) {
-        return "D";
+        return 'D';
     }
 
     if ((strcmp(move1, "ROCK") == 0 && strcmp(move2, "SCISSORS") == 0) || (strcmp(move1, "SCISSORS") == 0 && strcmp(move2, "PAPER") == 0) || (strcmp(move1, "PAPER") == 0 && strcmp(move2, "ROCK") == 0)) {
-        return "W";
+        return 'W';
     } else {
-        return "L";
+        return 'L';
     }
 }
 
-void parse_player(char *message, char *name) {
+void parse_move(char *message, char *name) {
     char *start = strchr(message, '|');
     start += 1;
     char *end = strchr(start, '|');
@@ -80,7 +80,72 @@ void send_message(int sock, char *type, char *arg1, char *arg2) {
 }
 
 void handle_game(int fd1, char *name1, int fd2, char *name2) {
+    ssize_t bytes1, bytes2;
+    char buffer1[BUFFER_SIZE];
+    char buffer2[BUFFER_SIZE];
     
+    while (1) {
+        
+        char begin1[300], begin2[300];
+        snprintf(begin1, sizeof(begin1), "B|%s||", name2);
+        snprintf(begin2, sizeof(begin2), "B|%s||", name1);
+        send(fd1, begin1, strlen(begin1), 0);
+        send(fd2, begin2, strlen(begin2), 0);
+        
+        bytes1 = recv(fd1, buffer1, sizeof(buffer1) - 1, 0);
+        bytes2 = recv(fd2, buffer2, sizeof(buffer2) - 1, 0);
+        if (bytes1 <= 0 || bytes2 <= 0) {
+            if (bytes1 <= 0) {
+                send(fd2, "R|W|||", 6, 0); 
+            } 
+            if (bytes2 <= 0) {
+                send(fd1, "R|W|||", 6, 0); 
+            }
+            break;
+        }
+        
+        buffer1[bytes1] = '\0';
+        buffer2[bytes2] = '\0';
+
+        char move1[50], move2[50];
+        parse_move(buffer1, move1);
+        parse_move(buffer2, move2);
+
+        char result = find_winner(move1, move2);
+        char result1, result2;
+        if (result == 'W') {
+            result1 = 'W';
+            result2 = 'L';
+        } else if (result == 'L') {
+            result1 = 'L';
+            result2 = 'W';
+        } else if (result = 'D') {
+            result1 = 'D';
+            result2 = 'D';
+        }
+
+        char msg1[300], msg2[300];
+        snprintf(msg1, sizeof(msg1), "R|%c|%s||", result1, move2);
+        snprintf(msg2, sizeof(msg2), "R|%c|%s||", result2, move1);
+        send(fd1, msg1, strlen(msg1), 0);
+        send(fd2, msg2, strlen(msg2), 0);
+
+        bytes1 = recv(fd1, buffer1, sizeof(buffer1) - 1, 0);
+        bytes2 = recv(fd2, buffer2, sizeof(buffer2) - 1, 0);
+        if (bytes1 <= 0 || bytes2 <= 0) {
+            break; 
+        }
+
+        buffer1[bytes1] = '\0';
+        buffer2[bytes2] = '\0';
+
+        if (buffer1[0] == 'Q' || buffer2[0] == 'Q') {
+            break; 
+        }
+    }
+    close(fd1);
+    close(fd2);
+    exit(0);
 }
 
 void handle_client(int client_fd) {
@@ -93,6 +158,10 @@ void handle_client(int client_fd) {
     //REMOVE THIS PRINT
     printf("Handled client (fd: %d)\n", client_fd);
     bytes = recv(client_fd, buffer, sizeof(buffer) - 1, 0);
+    if (bytes <= 0) {
+        close(client_fd);
+        exit(1);
+    }
     buffer[bytes] = '\0';
     
     if (buffer[0] != 'P') {
@@ -101,7 +170,7 @@ void handle_client(int client_fd) {
     }
 
     char pname[200];
-    parse_player(buffer, pname);
+    parse_move(buffer, pname);
 
     if (count >= 1024) {
         close(client_fd);
@@ -127,11 +196,12 @@ void handle_client(int client_fd) {
         pid_t pid = fork();
         if (pid == 0) {
             //handle_game()
+            handle_game(fd1, name1, fd2, name2);
+            exit(0);
         } 
         else if (pid > 0) {
             close(fd1);
             close(fd2);
-            exit(0);
         }
         else {
             perror("fork");
@@ -145,8 +215,6 @@ void handle_client(int client_fd) {
     //then: Add this client to a shared queue for pairing
     //if another player is waiting: fork/exec game handler process
     //otherwise: keep client waiting (block until match available)
-
-    close(client_fd); //THIS IS TEMPORARY
     exit(0);
 }
 
