@@ -83,27 +83,26 @@ void handle_game(int fd1, char *name1, int fd2, char *name2) {
     ssize_t bytes1, bytes2;
     char buffer1[BUFFER_SIZE];
     char buffer2[BUFFER_SIZE];
-    
+
     while (1) {
-        
         char begin1[300], begin2[300];
         snprintf(begin1, sizeof(begin1), "B|%s||", name2);
         snprintf(begin2, sizeof(begin2), "B|%s||", name1);
         send(fd1, begin1, strlen(begin1), 0);
         send(fd2, begin2, strlen(begin2), 0);
-        
+
         bytes1 = recv(fd1, buffer1, sizeof(buffer1) - 1, 0);
         bytes2 = recv(fd2, buffer2, sizeof(buffer2) - 1, 0);
-        if (bytes1 <= 0 || bytes2 <= 0) {
-            if (bytes1 <= 0) {
-                send(fd2, "R|W|||", 6, 0); 
-            } 
-            if (bytes2 <= 0) {
-                send(fd1, "R|W|||", 6, 0); 
-            }
+
+        if (bytes1 <= 0) {
+            send(fd2, "R|F|||", 6, 0);
             break;
         }
-        
+        if (bytes2 <= 0) {
+            send(fd1, "R|F|||", 6, 0);
+            break;
+        }
+
         buffer1[bytes1] = '\0';
         buffer2[bytes2] = '\0';
 
@@ -119,7 +118,7 @@ void handle_game(int fd1, char *name1, int fd2, char *name2) {
         } else if (result == 'L') {
             result1 = 'L';
             result2 = 'W';
-        } else if (result = 'D') {
+        } else if (result == 'D') {
             result1 = 'D';
             result2 = 'D';
         }
@@ -132,21 +131,24 @@ void handle_game(int fd1, char *name1, int fd2, char *name2) {
 
         bytes1 = recv(fd1, buffer1, sizeof(buffer1) - 1, 0);
         bytes2 = recv(fd2, buffer2, sizeof(buffer2) - 1, 0);
+
         if (bytes1 <= 0 || bytes2 <= 0) {
-            break; 
+            break;
         }
 
         buffer1[bytes1] = '\0';
         buffer2[bytes2] = '\0';
 
         if (buffer1[0] == 'Q' || buffer2[0] == 'Q') {
-            break; 
+            break;
         }
     }
+
     close(fd1);
     close(fd2);
     exit(0);
 }
+
 
 void handle_client(int client_fd) {
     char buffer[BUFFER_SIZE];
