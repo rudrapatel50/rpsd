@@ -102,18 +102,19 @@ void handle_game(int fd1, char *name1, int fd2, char *name2) {
         send(fd2, begin2, strlen(begin2), 0);
 
         bytes1 = recv(fd1, buffer1, sizeof(buffer1) - 1, 0);
-        bytes2 = recv(fd2, buffer2, sizeof(buffer2) - 1, 0);
-
         if (bytes1 <= 0) {
-            send(fd2, "R|F|||", 6, 0);
+            printf("[DEBUG] %s disconnected (forfeit)\n", name1);
+            send(fd2, "R|F|||", strlen("R|F|||"), 0);
             break;
         }
-        if (bytes2 <= 0) {
-            send(fd1, "R|F|||", 6, 0);
-            break;
-        }
-
         buffer1[bytes1] = '\0';
+        
+        bytes2 = recv(fd2, buffer2, sizeof(buffer2) - 1, 0);
+        if (bytes2 <= 0) {
+            printf("[DEBUG] %s disconnected (forfeit)\n", name2);
+            send(fd1, "R|F|||", strlen("R|F|||"), 0);
+            break;
+        }
         buffer2[bytes2] = '\0';
 
         char move1[50], move2[50];
@@ -160,7 +161,10 @@ void handle_game(int fd1, char *name1, int fd2, char *name2) {
             break;
         }
 
-        if (bytes1 <= 0 || bytes2 <= 0) {
+        if (buffer1[0] == 'C' && buffer2[0] == 'C') {
+            continue;
+        }
+        else {
             break;
         }
     }
@@ -202,9 +206,6 @@ int main(int argc, char *argv[]) {
             continue;
         }
 
-        const char *welcome = "W|1||";
-        send(client_fd, welcome, strlen(welcome), 0);
-
         char buffer[BUFFER_SIZE];
         ssize_t bytes = recv(client_fd, buffer, sizeof(buffer) - 1, 0);
         if (bytes <= 0) {
@@ -217,6 +218,9 @@ int main(int argc, char *argv[]) {
             close(client_fd);
             continue;
         }
+
+        const char *welcome = "W|1||";
+        send(client_fd, welcome, strlen(welcome), 0);
 
         char pname[200];
         parse_move(buffer, pname);
