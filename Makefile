@@ -5,8 +5,13 @@ CC = gcc
 CFLAGS = -g -Wall -std=c99 -fsanitize=address -fsanitize=undefined
 
 # Source files
-SRCS = rpsd.c
-OBJS = rpsd.o
+SRCS = rpsd.c player.c
+
+# Header files
+HEADERS = player.h
+
+# Object files
+OBJS = rpsd.o player.o
 
 # Executable name
 TARGET = rpsd
