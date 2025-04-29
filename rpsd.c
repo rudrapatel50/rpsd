@@ -10,6 +10,7 @@
 #include <sys/wait.h>
 #include <arpa/inet.h>
 #include <signal.h>
+#include "player.h"
 
 #define BACKLOG 10
 #define BUFFER_SIZE 1024
@@ -56,25 +57,28 @@ int setup_server_socket(int port) {
 }
 
 char find_winner(char *move1, char *move2) {
-    if (strcmp(move1, move2) == 0) return 'D';
-    if ((strcmp(move1, "ROCK") == 0 && strcmp(move2, "SCISSORS") == 0) || (strcmp(move1, "SCISSORS") == 0 && strcmp(move2, "PAPER") == 0) ||(strcmp(move1, "PAPER") == 0 && strcmp(move2, "ROCK") == 0)) {
-        return 'W';
+    if (strcmp(move1, move2) == 0) {
+        return 'D';
     }
-    else {
+    if ((strcmp(move1, "ROCK") == 0 && strcmp(move2, "SCISSORS") == 0) ||
+        (strcmp(move1, "SCISSORS") == 0 && strcmp(move2, "PAPER") == 0) ||
+        (strcmp(move1, "PAPER") == 0 && strcmp(move2, "ROCK") == 0)) {
+        return 'W';
+    } else {
         return 'L';
     }
 }
 
 void parse_move(char *message, char *move) {
     char *start = strchr(message, '|');
-    if (!start) { 
+    if (start == NULL) {
         return;
     }
 
     start++;
     char *end = strchr(start, '|');
 
-    if (!end) {
+    if (end == NULL) {
         return;
     }
 
@@ -87,7 +91,7 @@ void handle_game(int fd1, char *name1, int fd2, char *name2) {
     ssize_t bytes1, bytes2;
     char buffer1[BUFFER_SIZE], buffer2[BUFFER_SIZE];
 
-    printf("[DEBUG] Game started: %s (fd %d) vs %s (fd %d)\n", name1, fd1, name2, fd2);
+    printf("[DEBUG] Game started: %s vs %s \n", name1, name2);
     fflush(stdout);
 
     while (1) {
@@ -121,16 +125,14 @@ void handle_game(int fd1, char *name1, int fd2, char *name2) {
 
         char result = find_winner(move1, move2);
         char result1, result2;
-        if (result == 'W') { 
-            result1 = 'W'; 
-            result2 = 'L'; 
-        }
-        else if (result == 'L') { 
+        if (result == 'W') {
+            result1 = 'W';
+            result2 = 'L';
+        } else if (result == 'L') {
             result1 = 'L';
-            result2 = 'W'; 
-        }
-        else { 
-            result1 = result2 = 'D'; 
+            result2 = 'W';
+        } else {
+            result1 = result2 = 'D';
         }
 
         char msg1[300], msg2[300];
@@ -141,17 +143,29 @@ void handle_game(int fd1, char *name1, int fd2, char *name2) {
 
         bytes1 = recv(fd1, buffer1, sizeof(buffer1) - 1, 0);
         bytes2 = recv(fd2, buffer2, sizeof(buffer2) - 1, 0);
-        if (bytes1 <= 0 || bytes2 <= 0) { 
+
+        if (bytes1 > 0) {
+            buffer1[bytes1] = '\0';
+        } else {
+            buffer1[0] = '\0';
+        }
+
+        if (bytes2 > 0) {
+            buffer2[bytes2] = '\0';
+        } else {
+            buffer2[0] = '\0';
+        }
+
+        if ((bytes1 > 0 && buffer1[0] == 'Q') || (bytes2 > 0 && buffer2[0] == 'Q')) {
             break;
         }
 
-        buffer1[bytes1] = '\0';
-        buffer2[bytes2] = '\0';
-
-        if (buffer1[0] == 'Q' || buffer2[0] == 'Q') {
+        if (bytes1 <= 0 || bytes2 <= 0) {
             break;
         }
     }
+    remove_player_by_name(&active_players, name1);
+    remove_player_by_name(&active_players, name2);
 
     close(fd1);
     close(fd2);
@@ -188,8 +202,6 @@ int main(int argc, char *argv[]) {
             continue;
         }
 
-        printf("New client connected: %d\n", ntohs(client_addr.sin_port));
-
         const char *welcome = "W|1||";
         send(client_fd, welcome, strlen(welcome), 0);
 
@@ -209,6 +221,13 @@ int main(int argc, char *argv[]) {
         char pname[200];
         parse_move(buffer, pname);
 
+        if (find_player_by_name(active_players, pname) != NULL) {
+            send_logged_in_result(client_fd);
+            continue;
+        }
+
+        add_player(&active_players, pname, client_fd);
+
         players_queue[count].fd = client_fd;
         strncpy(players_queue[count].name, pname, 200);
         count++;
@@ -221,7 +240,7 @@ int main(int argc, char *argv[]) {
             strncpy(name2, players_queue[1].name, 200);
 
             for (int i = 2; i < count; i++) {
-                players_queue[i-2] = players_queue[i];
+                players_queue[i - 2] = players_queue[i];
             }
             count -= 2;
 
@@ -234,6 +253,9 @@ int main(int argc, char *argv[]) {
             } else if (pid > 0) {
                 close(fd1);
                 close(fd2);
+        
+                remove_player_by_name(&active_players, name1);
+                remove_player_by_name(&active_players, name2);
             } else {
                 perror("fork");
                 close(fd1);
